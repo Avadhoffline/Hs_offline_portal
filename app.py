@@ -8,7 +8,7 @@ app.secret_key = "secretkey"
 
 # -------------------- DATABASE CONFIG --------------------
 db_config = {
-    'host': '192.168.1.22',
+    'host': '122.180.251.28',
     'port': '3306',
     'user': 'avadh',
     'password': 'Avadh!@#123',
@@ -143,5 +143,6 @@ def logout():
 
 # ==================== RUN APP ====================
 if __name__ == '__main__':
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    app.debug = True
+    # app.run(host="0.0.0.0", port=5000, debug=False)
     
