@@ -1,1 +1,6 @@
 
+Flask
+gunicorn
+mysql-connector-python
+pandas
+openpyxl
