@@ -4,22 +4,21 @@ import pandas as pd
 import io
 
 app = Flask(__name__)
-app.secret_key = "secretkey"
+app.secret_key = "supersecretkey123"
 
 # -------------------- DATABASE CONFIG --------------------
 db_config = {
-    'host': '122.180.251.28',
+    'host': '192.168.1.22',
     'port': '3306',
     'user': 'avadh',
     'password': 'Avadh!@#123',
     'database': 'test'
 }
 
-# ==================== LOGIN ====================
+# -------------------- LOGIN PAGE --------------------
 @app.route('/', methods=['GET', 'POST'])
 def login():
     error = None
-
     if request.method == 'POST':
         email = request.form['email'].strip()
         password = request.form['password'].strip()
@@ -28,34 +27,29 @@ def login():
         cursor = conn.cursor(dictionary=True)
 
         cursor.execute(
-            "SELECT Email, PortType, HsCode FROM Users WHERE Email=%s AND Password=%s",
+            "SELECT DISTINCT Email, Password, HsCode, PortType FROM Users WHERE Email=%s AND Password=%s",
             (email, password)
         )
-
         users = cursor.fetchall()
         cursor.close()
         conn.close()
 
         if users:
             session['users'] = users
-
-            # If only one PortType
             if len(users) == 1:
                 session['user'] = users[0]['Email']
                 session['port_type'] = users[0]['PortType']
                 session['hs_code'] = users[0]['HsCode']
                 return redirect('/dashboard')
-
-            # If multiple PortTypes
-            return render_template('choose_port.html', users=users)
-
+            else:
+                return render_template('choose_port.html', users=users)
         else:
-            error = "Invalid email or password"
+            error = "Invalid Email or Password"
 
     return render_template('login.html', error=error)
 
 
-# ==================== SELECT PORT ====================
+# -------------------- SELECT PORT --------------------
 @app.route('/select_port', methods=['POST'])
 def select_port():
     index = int(request.form['port_selection'])
@@ -68,46 +62,47 @@ def select_port():
     return redirect('/dashboard')
 
 
-# ==================== DASHBOARD ====================
+# -------------------- DASHBOARD PAGE --------------------
 @app.route('/dashboard', methods=['GET', 'POST'])
 def dashboard():
-
     if 'user' not in session:
         return redirect('/')
 
     user_hs_code = str(session['hs_code'])
-    port_type_raw = session['port_type'].lower()
+    port_type = session['port_type'].strip().lower().replace(" ", "_")  # normalize
 
-    # ---------- AUTO TABLE DETECTION ----------
-    if 'sez' in port_type_raw:
-        if 'import' in port_type_raw:
-            table_name = 'SEZ_I_Off_Jan26'
-            display_type = 'SEZ Import'
-        else:
-            table_name = 'Sez_E_Off_jan26'
-            display_type = 'SEZ Export'
-    else:
-        if 'import' in port_type_raw:
-            table_name = 'Monthly_import_off_1to31th_Jan26'
-            display_type = 'Import'
-        else:
-            table_name = 'Monthly_Export_Offline_Jan26'
-            display_type = 'Export'
+    # -------- STRICT TABLE MAPPING --------
+    table_mapping = {
+        "import": "Monthly_import_off_1to31th_Jan26",
+        "export": "Monthly_Export_Offline_Jan26",
+        "sez_import": "SEZ_I_Off_Jan26",
+        "sez_export": "Sez_E_Off_jan26"
+    }
 
-    # ---------- DOWNLOAD ----------
+    if port_type not in table_mapping:
+        return f"Access Denied: Invalid PortType ({port_type})"
+
+    table_name = table_mapping[port_type]
+
     if request.method == 'POST':
         hs_code_input = request.form['hs_code'].strip()
-        hs_filter = f"{hs_code_input}%" if hs_code_input else f"{user_hs_code}%"
+
+        # -------------------- STRICT HS CODE RLS --------------------
+        if hs_code_input:
+            if not hs_code_input.startswith(user_hs_code):
+                return "Unauthorized HS Code Access"
+            hs_filter = f"{hs_code_input}%"
+        else:
+            hs_filter = f"{user_hs_code}%"
+        # ----------------------------------------------------------
 
         conn = mysql.connector.connect(**db_config)
-
         query = f"SELECT * FROM `{table_name}` WHERE `HS Code` LIKE %s"
         df = pd.read_sql(query, conn, params=[hs_filter])
-
         conn.close()
 
         if df.empty:
-            return f"No data found for HS Code: {hs_filter} in {display_type}"
+            return f"No data found for HS Code: {hs_filter}"
 
         output = io.BytesIO()
         df.to_excel(output, index=False, engine='openpyxl')
@@ -115,26 +110,27 @@ def dashboard():
 
         return send_file(
             output,
-            download_name=f"{display_type}_data.xlsx",
+            download_name=f"{port_type}_data.xlsx",
             as_attachment=True
         )
 
     return render_template(
         'dashboard.html',
-        user_port_type=display_type,
+        user_port_type=port_type,
         user_hs_code=user_hs_code
     )
 
 
-# ==================== CHANGE PORT ====================
+# -------------------- CHANGE PORT --------------------
 @app.route('/change_port')
 def change_port():
-    if 'users' in session:
-        return render_template('choose_port.html', users=session['users'])
-    return redirect('/')
+    if 'users' not in session:
+        return redirect('/')
+
+    return render_template('choose_port.html', users=session['users'])
 
 
-# ==================== LOGOUT ====================
+# -------------------- LOGOUT --------------------
 @app.route('/logout')
 def logout():
     session.clear()
@@ -144,4 +140,3 @@ def logout():
 # ==================== RUN APP ====================
 if __name__ == '__main__':
     app.run(host="0.0.0.0", port=5000, debug=False)
-    
