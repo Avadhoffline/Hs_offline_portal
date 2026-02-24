@@ -7,8 +7,10 @@ app = Flask(__name__)
 app.secret_key = "supersecretkey123"
 
 # -------------------- DATABASE CONFIG --------------------
+
+
 db_config = {
-    'host': '192.168.1.22',
+    'host': '122.180.251.28',
     'port': '3306',
     'user': 'avadh',
     'password': 'Avadh!@#123',
